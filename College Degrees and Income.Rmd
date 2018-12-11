@@ -1,0 +1,279 @@
+---
+title: "College Degrees And Income"
+author: "Hanh Nguyen"
+date: "12/10/2018"
+output: 
+  html_document:
+    df_print: kable
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(knitr)
+degrees <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018-10-16/recent-grads.csv")
+```
+
+#Overview
+
+Data was obtained from SourceGithub -> tidytuesday -> recent-grads. There are `r ncol(degrees)` variables and `r nrow(degrees)` observations in the dataset.
+
+The analysis is based on an article about the relationship between Degrees and Income. The issue we need to keep in mind is that the dataset is from 2010. 
+
+Data types for each variable are below.
+
+```{r,echo= FALSE}
+kable(sapply(degrees,class))
+```
+
+Initial Questions:
+
+* What major category is most/least popular?
+* Major category difference by gender?
+* What major is struggling the most to find a job? What major is easier to find a job? 
+* Do women struggle more than men to find employment, agnostic of major
+* Relationship between earnings, gender gap, and unemployment rate.
+
+## 1. ENROLLMENT DATA
+
+### 1.1 What major category is most/least popular?
+
+Across 16 College Majors, Business is the most popular college major category with highest level of enrollment at\ 1,302,376.
+
+```{r}
+degrees %>%
+  group_by(Major_category) %>%
+  filter(!is.na(Total)) %>%
+  summarize(total_enrollment = sum(Total)) %>%
+  ggplot(aes(x= reorder(Major_category,total_enrollment),y=total_enrollment, fill = Major_category))+ geom_col() + coord_flip() + labs(x = "College Majors", y = "Total Enrollment")
+```
+
+### 1.2 Men/Women are really different in choosing major?
+
+College Majors with the largest gender gaps. 
+
+```{r}
+by_major_category <- degrees %>%
+  filter(!is.na(Total)) %>%
+  group_by(Major_category) %>%
+  summarize(Men = sum(Men),
+            Women = sum(Women),
+            Total = sum(Total))%>%
+   mutate(Share_Women = Women / Total)%>%
+  filter(Share_Women >= 0.6 | Share_Women <= 0.4)
+
+by_major_category %>%
+  arrange(desc(Total))%>%
+  select(Major_category, Men, Women, Total) %>%
+  gather(key = "Gender", value = "Enrollment", Men, Women)%>%
+  ggplot(aes(x = reorder(Major_category, Enrollment), y = Enrollment, fill = Gender)) + geom_col(position ="dodge") + coord_flip() + labs(x = "College Majors", y = "Total Enrollment") 
+```
+
+## 2. EMPLOYMENT DATA
+
+### 2.1  Employability by major?
+
+No clear pattern between Major_category and Unemployment_rate. 
+
+```{r}
+degrees %>%
+  filter(!is.na(Total))%>%
+  group_by(Major_category) %>%
+  summarize(un_rate = mean(Unemployment_rate)*100, total_enrollment = sum(Total))%>%
+  ggplot(aes(x= reorder(Major_category, total_enrollment),y=un_rate, fill = Major_category))+ geom_col() + coord_flip() + labs(x = "College Majors", y = "Unemployment rate (%)") 
+```
+
+**But don't assume all college sub majors are the same!**. We dive deeper to see what *college sub majors* students struggle most to find a job and what *college sub majors* where it is easier to find a job. 
+
+*Top 5 sub majors, highest rate of unemployment*
+
+Surprisingly, the major with highest rate of unemployment- Nuclear Engineering belongs to Engineering with nearly 20% unemployed. 
+```{r}
+degrees %>%
+  arrange(desc(Unemployment_rate))%>%
+  head(5)%>%
+  select(Major_category, Major, Total, Unemployment_rate)%>%
+
+knitr::kable()
+```
+
+*Top 5 sub majors, lowest rate of unemployment*
+
+Bottom line, there are wide differences among majors within a major category. For example, an engineer can still have high chance of being unemployed.  
+
+```{r}
+degrees %>%
+  arrange(desc(Unemployment_rate))%>%
+  tail(5)%>%
+  select(Major_category, Major, Total, Unemployment_rate)%>%
+
+knitr::kable()
+```
+
+### 2.2 Full time job and part time job by college majors, ranked by enrollment
+
+One observation is that the College major with the highest enrollment (Business) also has the highest number in Full time employment.
+
+```{r}
+degreesE <- degrees%>%
+  filter(!is.na(Total)) %>%
+  group_by(Major_category)%>%
+  summarize(total_enrollment = sum(Total))
+
+degrees %>%
+  group_by(Major_category)%>%
+  summarize(full_time = sum(Full_time), part_time = sum(Part_time))%>%
+  gather(key = "EmploymentType", value = "Employed", full_time, part_time) %>%
+  left_join(degreesE, by = "Major_category") %>%
+  ggplot(aes(x = reorder(Major_category, total_enrollment), y = Employed, fill = EmploymentType)) + geom_col(position ="stack") + coord_flip() + labs(x = "College Majors", y = "Employment") 
+```
+
+### 2.3 College job and non college job by college majors, ranked by enrollment
+
+But business is also the college major which has the highest percentage of employment in a non-college job (that means a job that doesn't require that degree).
+
+```{r}
+degreesE <- degrees%>%
+  filter(!is.na(Total)) %>%
+  group_by(Major_category)%>%
+  summarize(total_enrollment = sum(Total))
+
+degrees %>%
+  group_by(Major_category)%>%
+  summarize(college = sum(College_jobs), non_college = sum(Non_college_jobs))%>%
+  gather(key = "EmploymentType", value = "Employed", college, non_college) %>%
+  left_join(degreesE, by = "Major_category") %>%
+  ggplot(aes(x = reorder(Major_category, total_enrollment), y = Employed, fill = EmploymentType)) + geom_col(position ="stack") + coord_flip() + labs(x = "College Majors", y = "Employment") 
+```
+
+### 2.4 Unemployment rate by gender and Major
+
+* Male dominated sub-majors: sub majors that have percentage of Women signing up less than 50%
+* Female dominated sub-majors: sub majors that have percentage of Women signing up more than 50%
+
+Both graphs exhibit similar pattern. Most male dominated sub-majors tend to have unemployment rate around 4%-8% and then 9-10%  (we see a more stacked cluster in those areas and then thinner in other areas). Female dominated sub-majors tend to have unemployment rate from 5-8% and mostly less than 10%. 
+
+Because the size of the circle represents the median income, we can see that male-dominated graph has more big circle and the scale of the circle also increases by \$10,000 while female-dominated graph has fewer big circle and the scale of the circle also increass by less, just \$5,000. 
+
+```{r}
+degrees_3 <- degrees %>%
+    filter(ShareWomen <= .5) %>%
+    arrange(desc(Men)) %>% 
+    head(50)
+  
+ ggplot(degrees_3, aes(x = Men, y = Unemployment_rate, size = Median, color = Major_category)) + 
+    geom_point() + ggtitle("Unemployment rate for sub-majors dominated by men")
+```
+
+```{r}
+degrees_2 <- degrees %>%
+  filter(ShareWomen > .5) %>%
+  arrange(desc(Women)) %>% 
+  head(50)
+
+  ggplot(degrees_2, aes(x = Women, y = Unemployment_rate, size = Median, color = Major_category)) + 
+  geom_point() + ggtitle("Unemployment rate for sub-majors dominated by women")
+```
+
+## 3. EARNINGS DATA
+
+## 3.1 Median Income by College Majors
+
+* Engineering has highest Median income.
+* Out of all sub-majors, Petroleum Engineering students have the highest Median income after graduation.
+* Out of all sub-majors, Library Science student have the lowest Median income after graduation. 
+
+```{r}
+outliers <- degrees%>%
+  mutate(rank = rank(desc(Median))) %>%
+  filter(rank == 1 | rank == 173)
+  
+degrees %>%
+  group_by(Major_category)%>%
+  ggplot(aes(x = reorder(Major_category, Median, FUN = median), y = Median)) + geom_boxplot() + coord_flip() + labs(x = "Major Category", y = "Median Income") + geom_text(data = outliers, aes(label = Major), checkoverlap = TRUE, vjust = "inward", hjust = "inward") 
+```
+
+### 3.2 Top 10 Majors with highest earnings, ranked by enrollment
+
+8/10 sub Majors belong to Engineering, only 1 in Business (Actuarial Science) and 1 in Physcial Sciences.
+Interestingly, Nuclear Engineering has the highest unemployment rate, yet 4th in terms of enrollment and also similar rank in terms of earnings. 
+
+```{r}
+degrees%>%
+  group_by(Major)%>%
+  arrange(desc(Median))%>%
+  head(10)%>%
+  ggplot(aes(x= reorder(Major, Total), y = Median, color = Major_category)) + geom_point() + geom_errorbar(aes(ymin =P25th, ymax= P75th)) + coord_flip() + labs(x = "Sub Majors", y = "Median income") + scale_y_log10() 
+```
+
+## 4. GENDER AND EARNINGS
+
+### 4.1 First, we build a linear regression model to see how variation in Median Income is explained by multiple independent variables.
+
+```{r}
+model <- lm(Median ~ ShareWomen + Low_wage_jobs + Full_time + Unemployment_rate, data = degrees)
+summary(model)
+```
+
+### 4.2 A further look at ShareWomen
+
+As Percentage of women increases, the median income decreases.
+
+*P value is <2 e-16, which means that percentage of women significantly represent median income.
+*The coefficient is -2.860e+4 which means they are negative related.
+
+It doesn't necessarily mean that more women in that major, lower earnings for that major. We just witness a negative correlation and that doesn't indicate a causal relationship. There are a lot of other factors involved. 
+
+```{r}
+degrees %>%
+ggplot(aes(x = ShareWomen, y = Median, color = Major_category)) + geom_point() + geom_smooth(aes(color = NULL), method = "lm") + labs(y = "Median_income", x = "Percentage of Women")
+```
+
+### 4.3 Gender gap earnings, break down by college majors
+
+What we see in this interesting graph is within a major category, how male-dominated major is paid compared to female dominated major? It can be seen that it's not always male-dominated major is paid higher than female-dominated major. 
+
+```{r}
+degrees$Type <- NA
+for (i in 1:nrow(degrees)){
+  if(is.na(degrees$ShareWomen[i]) || degrees$ShareWomen[i] >= 0.5){
+    degrees$Type[i] <- "Women dominate"
+  } else if(is.na(degrees$ShareWomen[i]) || degrees$ShareWomen[i] < 0.5){
+    degrees$Type[i] <- "Men dominate"
+  }
+}
+degrees %>% 
+  filter(!is.na(Total)) %>%
+  group_by(Major_category)%>%
+  ggplot(aes(x= reorder(Major_category, Median, FUN = median), y = Median, fill = Type)) + geom_boxplot() + coord_flip() + 
+  labs(x = "Major Category", y = "Median Income") + scale_y_log10()
+```
+
+### 4.4 A further look at unemployment rate
+
+Unemployment rate does not significantly represent median income
+
+* P value is 0.5 which is much larger than 0.05 level.
+* The coefficient is -1.465e+4.
+
+```{r}
+degrees %>%
+ggplot(aes(x = Unemployment_rate, y = Median, color = Major_category)) + geom_point() + geom_smooth(aes(color = NULL), method = "lm")
+```
+
+## 5. CONCLUSION
+
+Some key take-aways from the project:
+
+* Business Major is most popular but Engineer Major earns the most, in terms of median income.
+* Not all sub majors will be yield the same result, even under the same college major. 
+* Business generally has the highest level of full time employment relative to part time employment. However, business also has the highest percentage of non-college job relative to college jobs.
+* Although we set out to see if gender gap can affect the earnings, we can't really conclude a causal, at least with this dataset. All we see is that there is a negative correlation between gender and earnings.
+* The reason for this is college majors: women tend to choose a major that pays lower and men tend to choose a major that pays higher.
+* But that doesn't hold true all the time: in some college majors, female-dominated sub-majors pay significantly higher than male-dominated sub-majors, so gender gap is not an issue here. 
+* Next step could be a more thorough investigation of geography, location of work, etc to get a bigger picture. The dataset is limited to generate any meaningful analysis and recommendation. 
+* However, there still be a big call-out across the analysis:
+
+### STAY AT SCHOOL, KID!!!
+
