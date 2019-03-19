@@ -12,7 +12,7 @@ output:
 knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(knitr)
-degrees <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018-10-16/recent-grads.csv")
+degrees <- read_csv("https://raw.githubusercontent.com/hanhnguyen1990/College_Degrees/master/recent-grads.csv")
 ```
 
 #Overview
